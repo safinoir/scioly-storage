@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a56db">
+  <meta name="description" content="A shared inventory for your storage unit.">
+  <title>Storage Inventory</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><span aria-hidden="true">📦</span><h1>Storage Inventory</h1></div>
+    <span id="header-count" class="item-count">0 items</span>
+  </header>
+  <div id="connection" class="connection" role="status">Connecting to inventory…</div>
+  <nav class="tabs" aria-label="Main navigation">
+    <button type="button" data-tab="list" aria-current="page">📋 Inventory</button>
+    <button type="button" data-tab="add">➕ Add item</button>
+    <button type="button" data-tab="stats">📊 Stats</button>
+    <button type="button" data-tab="tags">🏷️ Tags</button>
+  </nav>
+  <main>
+    <div id="setup-error" class="notice error" hidden></div>
+    <div id="edit-draft-notice" class="notice" hidden>
+      <span>You have an unsaved item edit.</span>
+      <button type="button" id="resume-edit" class="text-button">Resume</button>
+      <button type="button" id="discard-edit-draft" class="text-button">Discard</button>
+    </div>
+    <section id="tab-list" class="tab-panel" aria-label="Inventory">
+      <div class="search-bar">
+        <label class="search-label"><span class="sr-only">Search inventory</span><input id="search-input" type="search" placeholder="Search items or tags…"></label>
+        <label><span class="sr-only">Sort inventory</span><select id="sort-select">
+          <option value="newest">Newest</option><option value="oldest">Oldest</option>
+          <option value="name">Name A–Z</option><option value="qty-high">Quantity ↓</option><option value="qty-low">Quantity ↑</option>
+        </select></label>
+      </div>
+      <div class="filter-heading"><span>Filter by tags <small>(match all)</small></span><button id="clear-filters" type="button" class="text-button">Clear</button></div>
+      <div id="tag-filters" class="chips" aria-label="Tag filters"></div>
+      <div class="list-toolbar"><p id="results-count" class="muted" aria-live="polite"></p><button id="open-export" class="btn secondary" type="button" disabled>Export Excel</button></div>
+      <div id="inventory-list" class="inventory-list"><div class="empty-state">Loading inventory…</div></div>
+    </section>
+    <section id="tab-add" class="tab-panel" aria-labelledby="add-title" hidden>
+      <h2 id="add-title" class="section-title">Add an item</h2>
+      <div id="add-form-host"></div>
+    </section>
+    <section id="tab-stats" class="tab-panel" aria-labelledby="stats-title" hidden>
+      <h2 id="stats-title" class="section-title">Inventory at a glance</h2>
+      <div class="stats-grid">
+        <div class="stat-card"><strong id="stat-total">0</strong><span>Item records</span></div>
+        <div class="stat-card"><strong id="stat-photos">0</strong><span>With photos</span></div>
+        <div class="stat-card"><strong id="stat-exact">0</strong><span>Exact quantity</span></div>
+        <div class="stat-card"><strong id="stat-estimated">0</strong><span>Estimated quantity</span></div>
+      </div>
+      <div class="form-card"><h3>Items by tag</h3><p class="muted small">An item can appear under more than one tag.</p><div id="tag-breakdown"></div></div>
+    </section>
+    <section id="tab-tags" class="tab-panel" aria-labelledby="tags-title" hidden>
+      <div class="form-card"><h2 id="tags-title">Manage tags</h2><p class="muted">Rename a tag here to update it everywhere.</p>
+        <form id="create-tag-form" class="inline-form"><label>New tag<input id="new-tag-name" name="name" maxlength="40" required placeholder="e.g. Fragile"></label><button class="btn primary" type="submit">Create tag</button></form>
+        <p id="tag-error" class="field-error" role="alert"></p>
+        <div id="tag-manager"></div>
+      </div>
+    </section>
+  </main>
+  <dialog id="edit-dialog" aria-labelledby="edit-title">
+    <div class="dialog-heading"><h2 id="edit-title">Edit item</h2><button type="button" class="icon-button" id="close-edit" aria-label="Close edit item">✕</button></div>
+    <div id="edit-form-host"></div>
+  </dialog>
+  <dialog id="export-dialog" aria-labelledby="export-title">
+    <div class="dialog-heading"><h2 id="export-title">Export inventory</h2><button type="button" class="icon-button" id="close-export" aria-label="Close export">✕</button></div>
+    <p class="muted">An Excel workbook with item details and embedded photo thumbnails.</p>
+    <div class="export-actions"><button type="button" id="export-all" class="btn primary">Export all items</button><button type="button" id="export-current" class="btn secondary">Export current results</button></div>
+    <p id="export-status" role="status"></p><progress id="export-progress" max="1" value="0" hidden></progress>
+    <a id="download-export" class="btn primary" hidden>Download Excel file</a>
+  </dialog>
+  <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-message">
+    <div class="dialog-heading"><h2 id="delete-title">Delete entry?</h2><button type="button" class="icon-button" id="close-delete" aria-label="Close delete confirmation">✕</button></div>
+    <p id="delete-message"></p>
+    <p id="delete-error" class="field-error" role="alert"></p>
+    <p id="delete-status" role="status"></p>
+    <div class="form-actions"><button type="button" id="cancel-delete" class="btn secondary" autofocus>Cancel</button><button type="button" id="confirm-delete" class="btn danger">Delete entry</button></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <noscript><p class="notice error">Enable JavaScript to use this inventory.</p></noscript>
+
+  <template id="item-form-template">
+    <form class="item-form form-card">
+      <p class="draft-status muted small" role="status"></p>
+      <label>Item name <span class="required">*</span><input name="name" maxlength="120" autocomplete="off" required placeholder="e.g. Safety goggles"></label>
+      <div class="qty-row"><label>Quantity <span class="required">*</span><input name="qty" type="number" min="0" max="1000000000" step="1" inputmode="numeric" required placeholder="e.g. 12"></label><label>Count type<select name="qtyType"><option value="exact">Exact</option><option value="approx">Estimate (~)</option></select></label></div>
+      <label>Description <span class="optional">optional</span><textarea name="desc" maxlength="2000" rows="3" placeholder="A short description"></textarea></label>
+      <fieldset class="tag-fieldset"><legend>Tags <span class="optional">optional</span></legend><div class="form-tags chips"></div><p class="muted small">Create and rename tags in the Tags tab.</p></fieldset>
+      <div class="photo-section"><h3>Photo <span class="optional">optional</span></h3>
+        <img class="photo-preview" alt="Selected item photo" hidden>
+        <div class="photo-placeholder">📷 One photo can help you find this later.</div>
+        <div class="photo-actions"><label class="btn secondary file-label">Take photo<input class="camera-input" type="file" accept="image/*" capture="environment"></label><label class="btn secondary file-label">Choose image<input class="library-input" type="file" accept="image/*"></label><button type="button" class="remove-photo text-button" hidden>Remove photo</button></div>
+        <p class="photo-status muted small" role="status"></p>
+      </div>
+      <label>Location in unit <span class="optional">optional</span><input name="location" maxlength="200" placeholder="e.g. Back-left shelf, box 2"></label>
+      <label>Notes <span class="optional">optional</span><textarea name="notes" maxlength="2000" rows="2" placeholder="Anything else to remember"></textarea></label>
+      <p class="form-error field-error" role="alert"></p>
+      <div class="form-actions"><button type="submit" class="btn primary save-item" disabled>Add to inventory</button><button type="button" class="btn secondary discard-draft">Discard draft</button></div>
+      <button type="button" class="btn danger delete-item" hidden>Delete entry</button>
+    </form>
+  </template>
+</body>
+</html>

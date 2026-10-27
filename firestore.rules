@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function text(value, maximum) {
+      return value is string && value.size() <= maximum;
+    }
+    function tagAt(ids, index) {
+      return ids.size() <= index || (ids[index] is string && ids[index].size() > 0
+        && ids[index].size() <= 128 && !ids[index].matches('.*/.*'));
+    }
+    function validTags(ids) {
+      return ids is list && ids.size() <= 20 && ids.toSet().size() == ids.size()
+        && tagAt(ids, 0) && tagAt(ids, 1) && tagAt(ids, 2) && tagAt(ids, 3)
+        && tagAt(ids, 4) && tagAt(ids, 5) && tagAt(ids, 6) && tagAt(ids, 7)
+        && tagAt(ids, 8) && tagAt(ids, 9) && tagAt(ids, 10) && tagAt(ids, 11)
+        && tagAt(ids, 12) && tagAt(ids, 13) && tagAt(ids, 14) && tagAt(ids, 15)
+        && tagAt(ids, 16) && tagAt(ids, 17) && tagAt(ids, 18) && tagAt(ids, 19);
+    }
+    function validItem(d) {
+      return d.keys().hasAll(['name', 'desc', 'qty', 'qtyType', 'location', 'notes', 'tagIds', 'hasPhoto', 'createdAt', 'updatedAt'])
+        && d.keys().hasOnly(['name', 'desc', 'qty', 'qtyType', 'location', 'notes', 'tagIds', 'hasPhoto', 'createdAt', 'updatedAt'])
+        && text(d.name, 120) && d.name.matches('.*[^\\s].*')
+        && text(d.desc, 2000) && text(d.location, 200) && text(d.notes, 2000)
+        && d.qty is int && d.qty >= 0 && d.qty <= 1000000000
+        && d.qtyType in ['exact', 'approx']
+        && validTags(d.tagIds)
+        && d.hasPhoto is bool
+        && d.createdAt is timestamp && d.updatedAt == request.time;
+    }
+    // Intentionally shared access: this app has no login.
+    match /inventory/{itemId} {
+      allow read, delete: if true;
+      allow create: if validItem(request.resource.data) && request.resource.data.createdAt == request.time;
+      allow update: if validItem(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt;
+    }
+    match /tags/{tagId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasOnly(['name'])
+        && text(request.resource.data.name, 40)
+        && request.resource.data.name.matches('.*[^\\s].*');
+    }
+    match /photos/{itemId} {
+      allow read, delete: if true;
+      allow create, update: if request.resource.data.keys().hasOnly(['photoB64'])
+        && text(request.resource.data.photoB64, 256000)
+        && request.resource.data.photoB64.matches('data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}')
+        && getAfter(/databases/$(database)/documents/inventory/$(itemId)).data.hasPhoto == true;
+    }
+  }
+}
